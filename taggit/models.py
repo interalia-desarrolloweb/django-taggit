@@ -23,34 +23,100 @@ class TagBase(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.pk and not self.slug:
-            self.slug = self.slugify(self.name)
-            from django.db import router
-            using = kwargs.get("using") or router.db_for_write(
-                type(self), instance=self)
+            self.unique_slugify(self.name)
+            super(TagBase, self).save(*args, **kwargs)
+            
+            #from django.db import router
+            #using = kwargs.get("using") or router.db_for_write(
+            #    type(self), instance=self)
             # Make sure we write to the same db for all attempted writes,
             # with a multi-master setup, theoretically we could try to
             # write and rollback on different DBs
-            kwargs["using"] = using
-            trans_kwargs = {"using": using}
-            i = 0
-            while True:
-                i += 1
-                try:
-                    sid = transaction.savepoint(**trans_kwargs)
-                    res = super(TagBase, self).save(*args, **kwargs)
-                    transaction.savepoint_commit(sid, **trans_kwargs)
-                    return res
-                except IntegrityError:
-                    transaction.savepoint_rollback(sid, **trans_kwargs)
-                    self.slug = self.slugify(self.name, i)
+            #kwargs["using"] = using
+            #trans_kwargs = {"using": using}
+            #i = 0
+            #while True:
+            #    i += 1
+            #    try:
+            #        sid = transaction.savepoint(**trans_kwargs)
+            #        res = super(TagBase, self).save(*args, **kwargs)
+            #        transaction.savepoint_commit(sid, **trans_kwargs)
+            #        return res
+            #    except IntegrityError:
+            #        transaction.savepoint_rollback(sid, **trans_kwargs)
+            #        self.slug = self.slugify(self.name, i)
         else:
             return super(TagBase, self).save(*args, **kwargs)
 
-    def slugify(self, tag, i=None):
-        slug = default_slugify(tag)
-        if i is not None:
-            slug += "_%d" % i
-        return slug
+    def unique_slugify(self, value, slug_field_name='slug', queryset=None,
+                   slug_separator='-'):
+        """
+        Calculates and stores a unique slug of ``value`` for an instance.
+    
+        ``slug_field_name`` should be a string matching the name of the field to
+        store the slug in (and the field to check against for uniqueness).
+    
+        ``queryset`` usually doesn't need to be explicitly provided - it'll default
+        to using the ``.all()`` queryset from the model's default manager.
+        """
+        slug_field = self._meta.get_field(slug_field_name)
+    
+        slug = getattr(self, slug_field.attname)
+        slug_len = slug_field.max_length
+    
+        # Sort out the initial slug, limiting its length if necessary.
+        slug = slugify(value)
+        if slug_len:
+            slug = slug[:slug_len]
+        slug = self._slug_strip(slug, slug_separator)
+        original_slug = slug
+    
+        # Create the queryset if one wasn't explicitly provided and exclude the
+        # current instance from the queryset.
+        if queryset is None:
+            queryset = self.__class__._default_manager.all()
+        if self.pk:
+            queryset = queryset.exclude(pk=self.pk)
+    
+        # Find a unique slug. If one matches, at '-2' to the end and try again
+        # (then '-3', etc).
+        next = 2
+        while not slug or queryset.filter(**{slug_field_name: slug}):
+            slug = original_slug
+            end = '%s%s' % (slug_separator, next)
+            if slug_len and len(slug) + len(end) > slug_len:
+                slug = slug[:slug_len-len(end)]
+                slug = self._slug_strip(slug, slug_separator)
+            slug = '%s%s' % (slug, end)
+            next += 1
+    
+        setattr(self, slug_field.attname, slug)
+
+
+    def _slug_strip(self, value, separator='-'):
+        """
+        Cleans up a slug by removing slug separator characters that occur at the
+        beginning or end of a slug.
+    
+        If an alternate separator is used, it will also replace any instances of
+        the default '-' separator with the new separator.
+        """
+        separator = separator or ''
+        if separator == '-' or not separator:
+            re_sep = '-'
+        else:
+            re_sep = '(?:-|%s)' % re.escape(separator)
+        # Remove multiple instances and if an alternate separator is provided,
+        # replace the default '-' separator.
+        if separator != re_sep:
+            value = re.sub('%s+' % re_sep, separator, value)
+        # Remove separator from the beginning and end of the slug.
+        if separator:
+            if separator != '-':
+                re_sep = re.escape(separator)
+            value = re.sub(r'^%s+|%s+$' % (re_sep, re_sep), '', value)
+        return value
+
 
 
 class Tag(TagBase):

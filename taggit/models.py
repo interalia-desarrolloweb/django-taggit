@@ -65,7 +65,7 @@ class TagBase(models.Model):
         slug_len = slug_field.max_length
     
         # Sort out the initial slug, limiting its length if necessary.
-        slug = slugify(value)
+        slug = default_slugify(value)
         if slug_len:
             slug = slug[:slug_len]
         slug = self._slug_strip(slug, slug_separator)
@@ -101,6 +101,7 @@ class TagBase(models.Model):
         If an alternate separator is used, it will also replace any instances of
         the default '-' separator with the new separator.
         """
+        import re
         separator = separator or ''
         if separator == '-' or not separator:
             re_sep = '-'

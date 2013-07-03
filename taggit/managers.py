@@ -15,6 +15,7 @@ from taggit.utils import require_instance_manager
 
 
 class TaggableRel(ManyToManyRel):
+
     def __init__(self):
         self.related_name = None
         self.limit_choices_to = {}
@@ -24,8 +25,9 @@ class TaggableRel(ManyToManyRel):
 
 
 class TaggableManager(RelatedField):
+
     def __init__(self, verbose_name=_("Tags"),
-        help_text=_("A comma-separated list of tags."), through=None, blank=False):
+                 help_text=_("A comma-separated list of tags."), through=None, blank=False):
         self.through = through or TaggedItem
         self.rel = TaggableRel()
         self.verbose_name = verbose_name
@@ -44,7 +46,7 @@ class TaggableManager(RelatedField):
     def __get__(self, instance, model):
         if instance is not None and instance.pk is None:
             raise ValueError("%s objects need to have a primary key value "
-                "before you can access their tags." % model.__name__)
+                             "before you can access their tags." % model.__name__)
         manager = _TaggableManager(
             through=self.through, model=model, instance=instance
         )
@@ -76,7 +78,8 @@ class TaggableManager(RelatedField):
 
     def post_through_setup(self, cls):
         self.use_gfk = (
-            self.through is None or issubclass(self.through, GenericTaggedItemBase)
+            self.through is None or issubclass(
+                self.through, GenericTaggedItemBase)
         )
         self.rel.to = self.through._meta.get_field("tag").rel.to
         self.related = RelatedObject(self.through, cls, self)
@@ -127,7 +130,7 @@ class TaggableManager(RelatedField):
     def extra_filters(self, pieces, pos, negate):
         if negate or not self.use_gfk:
             return []
-        prefix = "__".join(["tagged_items"] + pieces[:pos-2])
+        prefix = "__".join(["tagged_items"] + pieces[:pos - 2])
         get = ContentType.objects.get_for_model
         cts = [get(obj) for obj in _get_subclasses(self.model)]
         if len(cts) == 1:
@@ -139,6 +142,7 @@ class TaggableManager(RelatedField):
 
 
 class _TaggableManager(models.Manager):
+
     def __init__(self, through, model, instance):
         self.through = through
         self.model = model
@@ -166,10 +170,13 @@ class _TaggableManager(models.Manager):
         tag_objs.update(existing)
 
         for new_tag in str_tags - set(t.name for t in existing):
-            tag_objs.add(self.through.tag_model().objects.create(name=new_tag))
+            tag_obj, created = self.through.tag_model().objects.get_or_create(
+                name=new_tag)
+            tag_objs.add(tag_obj)
 
         for tag in tag_objs:
-            self.through.objects.get_or_create(tag=tag, **self._lookup_kwargs())
+            self.through.objects.get_or_create(
+                tag=tag, **self._lookup_kwargs())
 
     @require_instance_manager
     def set(self, *tags):
@@ -237,7 +244,7 @@ def _get_subclasses(model):
     for f in model._meta.get_all_field_names():
         field = model._meta.get_field_by_name(f)[0]
         if (isinstance(field, RelatedObject) and
-            getattr(field.field.rel, "parent_link", None)):
+                getattr(field.field.rel, "parent_link", None)):
             subclasses.extend(_get_subclasses(field.model))
     return subclasses
 

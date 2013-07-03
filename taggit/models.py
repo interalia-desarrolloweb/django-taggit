@@ -1,9 +1,8 @@
 from __future__ import unicode_literals
 
-import django
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.generic import GenericForeignKey
-from django.db import models, IntegrityError, transaction
+from django.db import models
 from django.db.models.query import QuerySet
 from django.template.defaultfilters import slugify as default_slugify
 from django.utils.translation import ugettext_lazy as _, ugettext
@@ -12,8 +11,10 @@ from django.utils.encoding import python_2_unicode_compatible
 
 @python_2_unicode_compatible
 class TagBase(models.Model):
-    name = models.CharField(verbose_name=_('Name'), unique=True, max_length=100)
-    slug = models.SlugField(verbose_name=_('Slug'), unique=True, max_length=100)
+    name = models.CharField(
+        verbose_name=_('Name'), unique=True, max_length=100)
+    slug = models.SlugField(
+        verbose_name=_('Slug'), unique=True, max_length=100)
 
     def __str__(self):
         return self.name
@@ -25,59 +26,41 @@ class TagBase(models.Model):
         if not self.pk and not self.slug:
             self.unique_slugify(self.name)
             super(TagBase, self).save(*args, **kwargs)
-            
-            #from django.db import router
-            #using = kwargs.get("using") or router.db_for_write(
-            #    type(self), instance=self)
-            # Make sure we write to the same db for all attempted writes,
-            # with a multi-master setup, theoretically we could try to
-            # write and rollback on different DBs
-            #kwargs["using"] = using
-            #trans_kwargs = {"using": using}
-            #i = 0
-            #while True:
-            #    i += 1
-            #    try:
-            #        sid = transaction.savepoint(**trans_kwargs)
-            #        res = super(TagBase, self).save(*args, **kwargs)
-            #        transaction.savepoint_commit(sid, **trans_kwargs)
-            #        return res
-            #    except IntegrityError:
-            #        transaction.savepoint_rollback(sid, **trans_kwargs)
-            #        self.slug = self.slugify(self.name, i)
         else:
             return super(TagBase, self).save(*args, **kwargs)
 
-    def unique_slugify(self, value, slug_field_name='slug', queryset=None,
-                   slug_separator='-'):
+    def unique_slugify(
+            self, value, slug_field_name='slug', queryset=None,
+            slug_separator='-'):
         """
         Calculates and stores a unique slug of ``value`` for an instance.
-    
-        ``slug_field_name`` should be a string matching the name of the field to
-        store the slug in (and the field to check against for uniqueness).
-    
-        ``queryset`` usually doesn't need to be explicitly provided - it'll default
-        to using the ``.all()`` queryset from the model's default manager.
+
+        ``slug_field_name`` should be a string matching the name of the field
+        to store the slug in (and the field to check against for uniqueness).
+
+        ``queryset`` usually doesn't need to be explicitly provided - it'll
+        default to using the ``.all()`` queryset from the model's default
+        manager.
         """
         slug_field = self._meta.get_field(slug_field_name)
-    
+
         slug = getattr(self, slug_field.attname)
         slug_len = slug_field.max_length
-    
+
         # Sort out the initial slug, limiting its length if necessary.
         slug = default_slugify(value)
         if slug_len:
             slug = slug[:slug_len]
         slug = self._slug_strip(slug, slug_separator)
         original_slug = slug
-    
+
         # Create the queryset if one wasn't explicitly provided and exclude the
         # current instance from the queryset.
         if queryset is None:
             queryset = self.__class__._default_manager.all()
         if self.pk:
             queryset = queryset.exclude(pk=self.pk)
-    
+
         # Find a unique slug. If one matches, at '-2' to the end and try again
         # (then '-3', etc).
         next = 2
@@ -85,21 +68,20 @@ class TagBase(models.Model):
             slug = original_slug
             end = '%s%s' % (slug_separator, next)
             if slug_len and len(slug) + len(end) > slug_len:
-                slug = slug[:slug_len-len(end)]
+                slug = slug[:slug_len - len(end)]
                 slug = self._slug_strip(slug, slug_separator)
             slug = '%s%s' % (slug, end)
             next += 1
-    
-        setattr(self, slug_field.attname, slug)
 
+        setattr(self, slug_field.attname, slug)
 
     def _slug_strip(self, value, separator='-'):
         """
-        Cleans up a slug by removing slug separator characters that occur at the
-        beginning or end of a slug.
-    
-        If an alternate separator is used, it will also replace any instances of
-        the default '-' separator with the new separator.
+        Cleans up a slug by removing slug separator characters that occur at
+        the beginning or end of a slug.
+
+        If an alternate separator is used, it will also replace any instances
+        of the default '-' separator with the new separator.
         """
         import re
         separator = separator or ''
@@ -117,7 +99,6 @@ class TagBase(models.Model):
                 re_sep = re.escape(separator)
             value = re.sub(r'^%s+|%s+$' % (re_sep, re_sep), '', value)
         return value
-
 
 
 class Tag(TagBase):
@@ -185,7 +166,7 @@ class GenericTaggedItemBase(ItemBase):
     content_object = GenericForeignKey()
 
     class Meta:
-        abstract=True
+        abstract = True
 
     @classmethod
     def lookup_kwargs(cls, instance):
@@ -200,13 +181,15 @@ class GenericTaggedItemBase(ItemBase):
             # Can do a real object_id IN (SELECT ..) query.
             return {
                 "object_id__in": instances,
-                "content_type": ContentType.objects.get_for_model(instances.model),
+                "content_type": ContentType.objects.get_for_model(
+                    instances.model),
             }
         else:
             # TODO: instances[0], can we assume there are instances.
             return {
                 "object_id__in": [instance.pk for instance in instances],
-                "content_type": ContentType.objects.get_for_model(instances[0]),
+                "content_type": ContentType.objects.get_for_model(
+                    instances[0]),
             }
 
     @classmethod
